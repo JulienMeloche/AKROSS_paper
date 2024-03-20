@@ -15,11 +15,30 @@ from smrt import make_ice_column, make_interface, make_snowpack
 from smrt.core.globalconstants import PSU
 from smrt.interface.geometrical_optics_backscatter import GeometricalOpticsBackscatter
 from smrt.interface.iem_fung92_brogioni10 import IEM_Fung92_Briogoni10
-from smrt.permittivity.saline_snow import saline_snow_permittivity_scharien_with_stogryn95 as ssp
+
 
 #turn off warning from smrt
 import warnings
 warnings.simplefilter('ignore')
+
+
+#constant Ice parameter
+MYI_ice = make_ice_column(ice_type='firstyear',
+                    thickness=[2], temperature=260, 
+                    microstructure_model='independent_sphere',
+                    radius=1e-3,
+                    brine_inclusion_shape='spheres',
+                    density=910,
+                    salinity=5*PSU,
+                    add_water_substrate=True)
+
+FYI_ice = make_ice_column(ice_type='multiyear',
+                    thickness=[3], temperature=260, microstructure_model='independent_sphere',
+                    radius=1e-3,
+                    brine_inclusion_shape='spheres',
+                    density=880,
+                    salinity=5*PSU,
+                    add_water_substrate=True)
 
 
 def find_site_smp_files(site, data_dir=None):
@@ -35,7 +54,7 @@ def find_site_smp_files(site, data_dir=None):
     # Get list of filenames for that site
     smp_filelist = os.listdir(path=data_dir + '/' + site)
     # Amend filelist to include path
-    return [data_dir + '/' + site + '/' + f for f in smp_filelist]
+    return [data_dir + '/' + site + '/' + f for f in smp_filelist], [site[:-4] for f in smp_filelist]
 
 
 def get_coords(list_of_sites, data_dir):
@@ -59,123 +78,12 @@ def get_coords(list_of_sites, data_dir):
     return lats, lons
 
 
-def smp_snowpacks(list_of_filenames, layer_thickness=0.05, rough=False, ice_lens=None, permittivity=None, 
-                  sea_ice_density=910, sea_ice_temp = 260, snow_salt = 0, ice_salinity = 5, sigma_surface = 0):
-    # Function to take in an SMP measurement file, derive density and SSA
-    # And generate SMRT snowpack
-    # layer_thickness governs the thickness of layers to be used in SMRT
-    # default layer_thickness is 5cm    
-        
-    snowpacks = []
-    
-    # King 2020 coefficients. SSA are from TVC and assumed to apply to Eureka / Alert
-    k2020_coeffs = {'density':[312.54, 50.27, -50.26, -85.35], 'ssa':[12.05, -12.28, -1], 'equation':'ssa'}
-    
-    # Loop over SMP files for site:
-    for smp in list_of_filenames:
-        
-        
-        # 0. Determine substrate
-        if 'FYI' in smp:
-            ice = make_ice_column(ice_type='firstyear',
-                    thickness=[2], temperature=sea_ice_temp, 
-                    microstructure_model='independent_sphere',
-                    radius=1e-3,
-                    brine_inclusion_shape='spheres',
-                    density=sea_ice_density,
-                    salinity=ice_salinity*PSU,
-                    add_water_substrate=True)
-        else:
-            ice = make_ice_column(ice_type='multiyear',
-                    thickness=[3], temperature=sea_ice_temp, microstructure_model='independent_sphere',
-                    radius=1e-3,
-                    brine_inclusion_shape='spheres',
-                    density=sea_ice_density,
-                    #brine_permittivity_model = seawater_permittivity_stogryn95,            
-                    salinity=ice_salinity*PSU,
-                    add_water_substrate=True)
-        
-        
-        # 1. Take median and process density / SSA
-        #smp_median = density_ssa.median_profile([smp])
-        try:
-            smp_profile = profile.Profile(smp)
-            c2020_m = density_ssa.calc(smp_profile.samples_within_snowpack(), coeff_model=k2020_coeffs, window=5, overlap=50)
-            total_depth_in_m = c2020_m.distance.iloc[-1] * 1e-3
 
-            # 2. Group density / SSA into layers. Take median
-            current_thickness = c2020_m.distance.diff().iloc[-1] * 1e-3 # Convert to m
-            number_in_group = int(layer_thickness / current_thickness)
-            df = c2020_m.rolling(number_in_group).median()
-            df = df.iloc[number_in_group::number_in_group, :]
+def debye_calc(ssa, density):
+    return 4 * (1 - density / 917) / (ssa * 917)
 
-            # 3. Calculate number of layers needed
-            nlayers = len(df)
-
-            # 4. Assign layer thickness from top, with any remaining depth allocated to bottom layer
-            thickness_array = nlayers * [layer_thickness]
-            # Add in remaining profile to lowest layer
-            extra_thickness = total_depth_in_m - sum(thickness_array)
-            thickness_array[-1] += extra_thickness
-            
-            # 5. Extract density
-            density_array = df.density
-
-            # 6. Derive exp corr length
-            ssa_array = df.ssa
-            # Convert to exp. corr length
-            debye = 1
-            lex_array = debye * 4 * (1 - density_array / 917) / (ssa_array * 917)
-
-            # 7. Assume temperature array - constant for now
-            temperature_array = [260] * nlayers
-                
-            # Convert to list once lex has been calculated
-            # This enables ice lens to be inserted
-            lex_array = lex_array.tolist()
-            density_array = density_array.tolist()    
-
-            #set salinity of last snow layer
-            snow_salinity = np.zeros(nlayers)
-            snow_salinity[-1] = snow_salt * PSU
-                
-            # 8. Insert ice lens if needed
-            # Have to insert it when creating the snowpack so boundaries (interfaces) are calculated correctly
-            if isinstance(ice_lens, int) and (abs(ice_lens) <= len(thickness_array)):
-                # Will only insert ice lens if an integer is passed
-                thickness_array = np.insert(thickness_array,ice_lens+1, 0.002) # 2mm ice lens below layer specifed
-                lex_array = np.insert(lex_array, ice_lens+1, 1e-5) # 0.1mm exp correlation length
-                density_array = np.insert(density_array, ice_lens+1, 909) # Watts et al., TC 2016.
-                temperature_array = np.insert(temperature_array, ice_lens+1, 260)
-            elif ice_lens is None:
-                pass
-            else:
-                print ('ice_lens should be integer equal to or less than the number of snow layers')
-                return
-
-            # 9. Generate snowpack
-            if rough == False:
-                snow_ice = make_snowpack(thickness_array, microstructure_model='exponential',
-                                 ice_permittivity_model=permittivity, density=density_array, 
-                                 corr_length=lex_array, temperature=temperature_array,
-                                 salinity = snow_salinity) + ice
-                snow_ice.sigma_surface = sigma_surface
-                snowpacks.append(snow_ice)
-
-            else:
-                surface = make_interface(GeometricalOpticsBackscatter, mean_square_slope=0.05)
-                snow_ice = make_snowpack(thickness_array, microstructure_model='exponential', surface=surface,
-                                ice_permittivity_model=permittivity, density=density_array, 
-                                corr_length=lex_array, temperature=temperature_array,
-                                salinity = snow_salinity) + ice
-                snowpacks.append(snow_ice)
-        except:
-            print ('make snowpack failed for', smp)
-            pass
-            
-    return snowpacks
-
-def build_snowpack_pickle(smp_profile, ice_salinity = 5, ice_temp = 260, sea_ice_density = 910, ice_type = 'firstyear'):
+def build_snowpack_pickle(smp_profile, ice_salinity = 5, ice_temp = 260, sea_ice_density = 910, 
+                            ice_type = 'firstyear', sigma_surface = 0):
     #build snowpack for CB
     list_sp = []
     for profile in smp_profile:
@@ -189,13 +97,17 @@ def build_snowpack_pickle(smp_profile, ice_salinity = 5, ice_temp = 260, sea_ice
                 add_water_substrate=True)
 
         # Convert to exp. corr length
-        debye = 0.75
+        debye = 1.2
         lex_array = debye * 4 * (1 - profile.density / 917) / (profile.ssa * 917)
 
-        snowpack = make_snowpack(profile.thick, microstructure_model='exponential',
-                        ice_permittivity_model=ssp, density=profile.density , 
-                        corr_length=lex_array, temperature = 260,
-                        salinity=profile.salinity *PSU) + ice
+        profile.temperature[profile.temperature < 251] = 251
+        snowpack = make_snowpack(profile.thick, microstructure_model='unified_scaled_exponential',
+                        density=profile.density , 
+                        porod_length=lex_array,
+                        temperature = profile.temperature,
+                        salinity=profile.salinity * PSU,
+                        polydispersity = 1) + ice
+        snowpack.sigma_surface = sigma_surface
         list_sp.append(snowpack)
     
     return list_sp
@@ -211,22 +123,16 @@ def change_roughness(list_of_snowpack, mean_ice_rms, mean_ice_lc, mean_snow_rms,
     
 
 
-def change_roughness_geo(list_of_snowpack, mean_ice_rms, mean_ice_lc, mean_snow_rms, mean_snow_lc, interface = 'snow'):
+def change_roughness_geo(list_of_snowpack, mean_ice_rms, mean_ice_lc, mean_snow_rms, mean_snow_lc):
     for i in range(len(list_of_snowpack)):
 
         #ice
-        list_of_snowpack[i].interfaces[-1] = make_interface(IEM_Fung92_Briogoni10, roughness_rms = mean_ice_rms, corr_length = mean_ice_lc)
-        #snow
-        list_of_snowpack[i].interfaces[0] = make_interface(IEM_Fung92_Briogoni10, roughness_rms = mean_snow_rms, corr_length = mean_snow_lc)
+        ice_mss = 2*mean_ice_rms**2/mean_ice_lc**2
+        list_of_snowpack[i].interfaces[-1] = make_interface(GeometricalOpticsBackscatter, mean_square_slope = ice_mss)
+        #surface
+        snow_mss = 2*mean_snow_rms**2/mean_snow_lc**2
+        list_of_snowpack[i].interfaces[0] = make_interface(GeometricalOpticsBackscatter, mean_square_slope = snow_mss)
 
-        if interface == 'ice':
-            #ice
-            ice_mss = 2*mean_ice_rms**2/mean_ice_lc**2
-            list_of_snowpack[i].interfaces[-1] = make_interface(GeometricalOpticsBackscatter, mean_square_slope = ice_mss)
-        if interface == 'snow':
-            #surface
-            snow_mss = 2*mean_snow_rms**2/mean_snow_lc**2
-            list_of_snowpack[i].interfaces[0] = make_interface(GeometricalOpticsBackscatter, mean_square_slope = snow_mss)
         
 
 
@@ -281,3 +187,153 @@ def closest(data, v):
     print(f'return index for position : {pos}')
     
     return data.index(min(data, key=lambda p: distance(v['lat'],v['lon'],p['lat'],p['lon'])))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# def smp_snowpacks(list_of_filenames, list_of_file_sites, salt_dict, temp_dict, layer_thickness=0.05, rough=False, ice_lens=None, permittivity=None, 
+#                   sea_ice_density=910, sea_ice_temp = 260, ice_salinity = 5, sigma_surface = 0):
+#     # Function to take in an SMP measurement file, derive density and SSA
+#     # And generate SMRT snowpack
+#     # layer_thickness governs the thickness of layers to be used in SMRT
+#     # default layer_thickness is 5cm    
+        
+#     snowpacks = []
+    
+#     # King 2020 coefficients. SSA are from TVC and assumed to apply to Eureka / Alert
+#     #k2020_coeffs = {'density':[312.54, 50.27, -50.26, -85.35], 'ssa':[12.05, -12.28, -1], 'equation':'ssa'}
+#     k2020_coeffs = {'density':[312.54, 50.27, -50.26, -85.35], 'ssa':[2.37, -0.7, -0.06], 'equation':'ssa'}
+#     #k2020_coeffs = {'density':[312.54, 50.27, -50.26, -85.35], 'ssa':[9.212, -14.627, -1.582], 'equation':'ssa'}
+    
+#     # Loop over SMP files for site:
+#     for smp, site in zip(list_of_filenames, list_of_file_sites):
+        
+        
+#         # 0. Determine substrate
+#         if 'FYI' in smp:
+#             ice = make_ice_column(ice_type='firstyear',
+#                     thickness=[2], temperature=sea_ice_temp, 
+#                     microstructure_model='independent_sphere',
+#                     radius=1e-3,
+#                     brine_inclusion_shape='spheres',
+#                     density=sea_ice_density,
+#                     salinity=ice_salinity*PSU,
+#                     add_water_substrate=True)
+#         else:
+#             ice = make_ice_column(ice_type='multiyear',
+#                     thickness=[3], temperature=sea_ice_temp, microstructure_model='independent_sphere',
+#                     radius=1e-3,
+#                     brine_inclusion_shape='spheres',
+#                     density=sea_ice_density,
+#                     #brine_permittivity_model = seawater_permittivity_stogryn95,            
+#                     salinity=ice_salinity*PSU,
+#                     add_water_substrate=True)
+        
+        
+#         # 1. Take median and process density / SSA
+#         #smp_median = density_ssa.median_profile([smp])
+#         try:
+#             smp_profile = profile.Profile(smp)
+#             c2020_m = density_ssa.calc(smp_profile.samples_within_snowpack(), coeff_model=k2020_coeffs, window=5, overlap=50)
+#             total_depth_in_m = c2020_m.distance.iloc[-1] * 1e-3
+
+#             # 2. Group density / SSA into layers. Take median
+#             current_thickness = c2020_m.distance.diff().iloc[-1] * 1e-3 # Convert to m
+#             number_in_group = int(layer_thickness / current_thickness)
+#             df = c2020_m.rolling(number_in_group).median()
+#             df = df.iloc[number_in_group::number_in_group, :]
+
+#             # 3. Calculate number of layers needed
+#             nlayers = len(df)
+
+#             # 4. Assign layer thickness from top, with any remaining depth allocated to bottom layer
+#             thickness_array = nlayers * [layer_thickness]
+#             # Add in remaining profile to lowest layer
+#             extra_thickness = total_depth_in_m - sum(thickness_array)
+#             thickness_array[-1] += extra_thickness
+            
+#             # 5. Extract density
+#             density_array = df.density
+
+#             # 6. Derive exp corr length
+#             ssa_array = np.exp(df.ssa)
+#             # Convert to exp. corr length
+#             debye = 1
+#             lex_array = debye * 4 * (1 - density_array / 917) / (ssa_array * 917)
+
+                
+#             # Convert to list once lex has been calculated
+#             # This enables ice lens to be inserted
+#             lex_array = lex_array.tolist()
+#             density_array = density_array.tolist()    
+
+
+#             #get height from salt and temp interpolation
+#             height = np.cumsum(thickness_array[::-1])
+
+#             #get poly
+#             poly_ws = 0.7*np.ones(int(len(height)/2))
+#             poly_dh = 1.3*np.ones(int(len(height)/2)+ int(len(height)%2))
+#             poly = np.concatenate([poly_ws, poly_dh])
+
+#             #set salinity of last snow layer
+#             salt_pit = salt_dict[site]
+#             snow_salinity = np.interp(height, salt_pit.height[::-1].values/100, salt_pit.param[::-1])[::-1]
+
+#             #settemp array
+#             temp_pit = temp_dict[site]
+#             temp_pit.param[temp_pit.param <-22] = -22
+#             temperature_array = np.interp(height, temp_pit.height[::-1].values/100, temp_pit.param[::-1])[::-1] + 273
+
+                
+#             # 8. Insert ice lens if needed
+#             # Have to insert it when creating the snowpack so boundaries (interfaces) are calculated correctly
+#             if isinstance(ice_lens, int) and (abs(ice_lens) <= len(thickness_array)):
+#                 # Will only insert ice lens if an integer is passed
+#                 thickness_array = np.insert(thickness_array,ice_lens+1, 0.002) # 2mm ice lens below layer specifed
+#                 lex_array = np.insert(lex_array, ice_lens+1, 1e-5) # 0.1mm exp correlation length
+#                 density_array = np.insert(density_array, ice_lens+1, 909) # Watts et al., TC 2016.
+#                 temperature_array = np.insert(temperature_array, ice_lens+1, 260)
+#             elif ice_lens is None:
+#                 pass
+#             else:
+#                 print ('ice_lens should be integer equal to or less than the number of snow layers')
+#                 return
+
+#             # 9. Generate snowpack
+#             if rough == False:
+#                 snow_ice = make_snowpack(thickness_array, microstructure_model='unified_scaled_exponential',
+#                                         ice_permittivity_model=permittivity, density=density_array, 
+#                                         porod_length=lex_array, temperature=temperature_array,
+#                                         salinity = snow_salinity*PSU, polydispersity = poly) + ice
+#                 snow_ice.sigma_surface = sigma_surface
+#                 snowpacks.append(snow_ice)
+
+#             else:
+#                 surface = make_interface(GeometricalOpticsBackscatter, mean_square_slope=0.05)
+#                 snow_ice = make_snowpack(thickness_array, microstructure_model='unified_scaled_exponential', surface=surface,
+#                                 ice_permittivity_model=permittivity, density=density_array, 
+#                                 porod_length=lex_array, temperature=temperature_array,
+#                                 salinity = snow_salinity*PSU, polydispersity = poly) + ice
+#                 snow_ice.sigma_surface = sigma_surface
+#                 snowpacks.append(snow_ice)
+#         except:
+#             print ('make snowpack failed for', smp)
+#             pass
+            
+#     return snowpacks

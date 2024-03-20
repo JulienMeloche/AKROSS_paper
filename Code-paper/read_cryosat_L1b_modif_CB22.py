@@ -1215,6 +1215,662 @@ def cryosat_baseline_D(full_filename, MODE, UNPACK=False):
     Waveform_1Hz = {}
     #-- Data Record Time (MDSR Time Stamp)
     #-- Time (seconds since 2000-01-01)
+    time_avg_01_ku = fid.variables['time_avg_01_ku'][:].copy()
+    Waveform_1Hz['Time'] = time_avg_01_ku.copy()
+    #-- Time: day part
+    Waveform_1Hz['Day'] = np.array(time_avg_01_ku/86400.0, dtype=np.int32)
+    #-- Time: second part
+    Waveform_1Hz['Second'] = np.array(time_avg_01_ku -
+        Waveform_1Hz['Day'][:]*86400.0, dtype=np.uint32)
+    #-- Time: microsecond part
+    Waveform_1Hz['Micsec'] = np.array((time_avg_01_ku -
+        Waveform_1Hz['Day'][:]*86400.0 -
+        Waveform_1Hz['Second'][:])*1e6, dtype=np.uint32)
+    #-- Lat: packed units (0.1 micro-degree, 1e-7 degrees)
+    Waveform_1Hz['Lat'] = fid.variables['lat_avg_01_ku'][:].copy()
+    #-- Lon: packed units (0.1 micro-degree, 1e-7 degrees)
+    Waveform_1Hz['Lon'] = fid.variables['lon_avg_01_ku'][:].copy()
+    #-- Alt: packed units (mm, 1e-3 m)
+    #-- Altitude of COG above reference ellipsoid (interpolated value)
+    Waveform_1Hz['Alt'] = fid.variables['alt_avg_01_ku'][:].copy()
+    #-- Window Delay (two-way) corrected for instrument delays
+    Waveform_1Hz['TD'] = fid.variables['window_del_avg_01_ku'][:].copy()
+    #-- 1 Hz Averaged Power Echo Waveform
+    Waveform_1Hz['Waveform'] = fid.variables['pwr_waveform_avg_01_ku'][:].copy()
+    #-- Echo Scale Factor (to scale echo to watts)
+    Waveform_1Hz['Linear_Wfm_Multiplier'] = fid.variables['echo_scale_factor_avg_01_ku'][:].copy()
+    #-- Echo Scale Power (a power of 2 to scale echo to Watts)
+    Waveform_1Hz['Power2_Wfm_Multiplier'] = fid.variables['echo_scale_pwr_avg_01_ku'][:].copy()
+    #-- Number of echoes averaged
+    Waveform_1Hz['N_avg_echoes'] = fid.variables['echo_numval_avg_01_ku'][:].copy()
+    Waveform_1Hz['Flags'] = fid.variables['flag_echo_avg_01_ku'][:].copy()
+
+    #-- CryoSat-2 Waveforms Groups
+    Waveform_20Hz = {}
+    #-- Echo Scale Factor (to scale echo to watts)
+    Waveform_20Hz['Linear_Wfm_Multiplier'] = np.ma.zeros((n_records,n_blocks))
+    Waveform_20Hz['Linear_Wfm_Multiplier'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    echo_scale_factor_20_ku = fid.variables['echo_scale_factor_20_ku'][:].copy()
+    #-- Echo Scale Power (a power of 2)
+    Waveform_20Hz['Power2_Wfm_Multiplier'] = np.ma.zeros((n_records,n_blocks))
+    Waveform_20Hz['Power2_Wfm_Multiplier'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    echo_scale_pwr_20_ku = fid.variables['echo_scale_pwr_20_ku'][:].copy()
+    #-- Number of echoes averaged
+    Waveform_20Hz['N_avg_echoes'] = np.ma.zeros((n_records,n_blocks))
+    Waveform_20Hz['N_avg_echoes'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    echo_numval_20_ku = fid.variables['echo_numval_20_ku'][:].copy()
+    #-- Flags for errors or information about 20Hz waveform
+    Waveform_20Hz['Flags'] = np.ma.zeros((n_records,n_blocks))
+    Waveform_20Hz['Flags'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_echo_20_ku = fid.variables['flag_echo_20_ku'][:].copy()
+    #-- CryoSat-2 mode specific waveform variables
+    if (MODE == 'LRM'):
+        #-- Low-Resolution Mode
+        #-- Averaged Power Echo Waveform [128]
+        Waveform_20Hz['Waveform'] = np.ma.zeros((n_records,n_blocks,n_LRM_RW))
+        Waveform_20Hz['Waveform'].mask = np.zeros((n_records,n_blocks,n_LRM_RW),dtype=bool)
+        pwr_waveform_20_ku = fid.variables['pwr_waveform_20_ku'][:].copy()
+    elif (MODE == 'SAR'):
+        #-- SAR Mode
+        #-- Averaged Power Echo Waveform [256]
+        Waveform_20Hz['Waveform'] = np.ma.zeros((n_records,n_blocks,n_SAR_D_RW))
+        Waveform_20Hz['Waveform'].mask = np.zeros((n_records,n_blocks,n_SAR_D_RW),dtype=bool)
+        pwr_waveform_20_ku = fid.variables['pwr_waveform_20_ku'][:].copy()
+    elif (MODE == 'SIN'):
+        #-- SARIN Mode
+        #-- Averaged Power Echo Waveform [1024]
+        Waveform_20Hz['Waveform'] = np.ma.zeros((n_records,n_blocks,n_SARIN_D_RW))
+        Waveform_20Hz['Waveform'].mask = np.zeros((n_records,n_blocks,n_SARIN_D_RW),dtype=bool)
+        pwr_waveform_20_ku = fid.variables['pwr_waveform_20_ku'][:].copy()
+        #-- Coherence [1024]: packed units (1/1000)
+        Waveform_20Hz['Coherence'] = np.ma.zeros((n_records,n_blocks,n_SARIN_D_RW))
+        Waveform_20Hz['Coherence'].mask = np.zeros((n_records,n_blocks,n_SARIN_D_RW),dtype=bool)
+        coherence_waveform_20_ku = fid.variables['coherence_waveform_20_ku'][:].copy()
+        #-- Phase Difference [1024]: packed units (microradians)
+        Waveform_20Hz['Phase_diff'] = np.ma.zeros((n_records,n_blocks,n_SARIN_D_RW))
+        Waveform_20Hz['Phase_diff'].mask = np.zeros((n_records,n_blocks,n_SARIN_D_RW),dtype=bool)
+        ph_diff_waveform_20_ku = fid.variables['ph_diff_waveform_20_ku'][:].copy()
+
+    #-- Beam Behavior Parameters
+    if MODE in ('SAR','SIN'):
+        Waveform_20Hz['Beam'] = {}
+        #-- Standard Deviation of Gaussian fit to range integrated stack power.
+        Waveform_20Hz['Beam']['SD'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['SD'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_std_20_ku = fid.variables['stack_std_20_ku'][:].copy()
+        #-- Stack Center: Mean of Gaussian fit to range integrated stack power.
+        Waveform_20Hz['Beam']['Center'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['Center'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_centre_20_ku = fid.variables['stack_centre_20_ku'][:].copy()
+        #-- Stack amplitude parameter scaled in dB/100.
+        Waveform_20Hz['Beam']['Amplitude'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['Amplitude'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_scaled_amplitude_20_ku = fid.variables['stack_scaled_amplitude_20_ku'][:].copy()
+        #-- 3rd moment: providing the degree of asymmetry of the range integrated
+        #-- stack power distribution.
+        Waveform_20Hz['Beam']['Skewness'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['Skewness'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_skewness_20_ku = fid.variables['stack_skewness_20_ku'][:].copy()
+        #-- 4th moment: Measure of peakiness of range integrated stack power distribution.
+        Waveform_20Hz['Beam']['Kurtosis'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['Kurtosis'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_kurtosis_20_ku = fid.variables['stack_kurtosis_20_ku'][:].copy()
+        #-- Stack peakiness computed from the range integrated power of the single look echoes
+        Waveform_20Hz['Beam']['Peakiness'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['Peakiness'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_peakiness_20_ku = fid.variables['stack_peakiness_20_ku'][:].copy()
+        #-- Stack residuals of Gaussian that fits the range integrated power of the single look echoes
+        Waveform_20Hz['Beam']['RMS'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['RMS'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_gaussian_fitting_residuals_20_ku = fid.variables['stack_gaussian_fitting_residuals_20_ku'][:].copy()
+        #-- Standard deviation as a function of boresight angle (microradians)
+        Waveform_20Hz['Beam']['SD_boresight_angle'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['SD_boresight_angle'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_std_angle_20_ku = fid.variables['stack_std_angle_20_ku'][:].copy()
+        #-- Stack Center angle as a function of boresight angle (microradians)
+        Waveform_20Hz['Beam']['Center_boresight_angle'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['Center_boresight_angle'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_centre_angle_20_ku = fid.variables['stack_centre_angle_20_ku'][:].copy()
+        #-- Stack Center angle as a function of look angle (microradians)
+        Waveform_20Hz['Beam']['Center_look_angle'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['Center_look_angle'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_centre_look_angle_20_ku = fid.variables['stack_centre_look_angle_20_ku'][:].copy()
+        #-- Number of contributing beams in the stack before weighting
+        Waveform_20Hz['Beam']['Number'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['Number'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_number_before_weighting_20_ku = fid.variables['stack_number_before_weighting_20_ku'][:].copy()
+        #-- Number of contributing beams in the stack after weighting
+        Waveform_20Hz['Beam']['Weighted_Number'] = np.ma.zeros((n_records,n_blocks))
+        Waveform_20Hz['Beam']['Weighted_Number'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+        stack_number_after_weighting_20_ku = fid.variables['stack_number_after_weighting_20_ku'][:].copy()
+
+    #-- for each record in the CryoSat file
+    for r in range(n_records):
+        #-- index for record r
+        idx = ind_first_meas_20hz_01[r]
+        #-- number of valid blocks in record r
+        cnt = np.count_nonzero(ind_meas_1hz_20_ku == r)
+
+        #-- CryoSat-2 Time and Orbit Group
+        Location['Time'].data[r,:cnt] = time_20_ku[idx:idx+cnt]
+        Location['Time'].mask[r,:cnt] = False
+        Location['Day'].data[r,:cnt] = np.array(time_20_ku[idx:idx+cnt]/86400.0, dtype=np.int32)
+        Location['Day'].mask[r,:cnt] = False
+        Location['Second'].data[r,:cnt] = np.array(time_20_ku[idx:idx+cnt] -
+            Location['Day'].data[r,:cnt]*86400.0, dtype=np.int32)
+        Location['Second'].mask[r,:cnt] = False
+        Location['Micsec'].data[r,:cnt] = np.array((time_20_ku[idx:idx+cnt] -
+            Location['Day'].data[r,:cnt]*86400.0 -
+            Location['Second'].data[r,:cnt])*1e6, dtype=np.uint32)
+        Location['Micsec'].mask[r,:cnt] = False
+        Location['USO_Corr'].data[r,:cnt] = uso_cor_20_ku[idx:idx+cnt]
+        Location['USO_Corr'].mask[r,:cnt] = False
+        Location['Mode_ID'].data[r,:cnt] = flag_instr_mode_op_20_ku[idx:idx+cnt]
+        Location['Mode_ID'].mask[r,:cnt] = False
+        Location['Mode_flags'].data[r,:cnt] = flag_instr_mode_flags_20_ku[idx:idx+cnt]
+        Location['Mode_flags'].mask[r,:cnt] = False
+        Location['Att_control'].data[r,:cnt] = flag_instr_mode_att_ctrl_20_ku[idx:idx+cnt]
+        Location['Att_control'].mask[r,:cnt] = False
+        Location['Inst_config'].data[r,:cnt] = flag_instr_conf_rx_flags_20_ku[idx:idx+cnt]
+        Location['Inst_config'].mask[r,:cnt] = False
+        Location['Inst_band'].data[r,:cnt] = flag_instr_conf_rx_bwdt_20_ku[idx:idx+cnt]
+        Location['Inst_band'].mask[r,:cnt] = False
+        Location['Inst_channel'].data[r,:cnt] = flag_instr_conf_rx_in_use_20_ku[idx:idx+cnt]
+        Location['Inst_channel'].mask[r,:cnt] = False
+        Location['Tracking_mode'].data[r,:cnt] = flag_instr_conf_rx_trk_mode_20_ku[idx:idx+cnt]
+        Location['Tracking_mode'].mask[r,:cnt] = False
+        Location['SSC'].data[r,:cnt] = seq_count_20_ku[idx:idx+cnt]
+        Location['SSC'].mask[r,:cnt] = False
+        Location['Rec_Count'].data[r,:cnt] = rec_count_20_ku[idx:idx+cnt]
+        Location['Rec_Count'].mask[r,:cnt] = False
+        Location['Lat'].data[r,:cnt] = lat_20_ku[idx:idx+cnt]
+        Location['Lat'].mask[r,:cnt] = False
+        Location['Lon'].data[r,:cnt] = lon_20_ku[idx:idx+cnt]
+        Location['Lon'].mask[r,:cnt] = False
+        Location['Alt'].data[r,:cnt] = alt_20_ku[idx:idx+cnt]
+        Location['Alt'].mask[r,:cnt] = False
+        Location['Alt_rate'].data[r,:cnt] = orb_alt_rate_20_ku[idx:idx+cnt]
+        Location['Alt_rate'].mask[r,:cnt] = False
+        Location['Sat_velocity'].data[r,:cnt,:] = sat_vel_vec_20_ku[idx:idx+cnt]
+        Location['Sat_velocity'].mask[r,:cnt,:] = False
+        Location['Real_beam'].data[r,:cnt,:] = beam_dir_vec_20_ku[idx:idx+cnt]
+        Location['Real_beam'].mask[r,:cnt,:] = False
+        Location['Baseline'].data[r,:cnt,:] = inter_base_vec_20_ku[idx:idx+cnt]
+        Location['Baseline'].mask[r,:cnt,:] = False
+        Location['ST_ID'].data[r,:cnt] = flag_instr_conf_rx_str_in_use_20_ku[idx:idx+cnt]
+        Location['ST_ID'].mask[r,:cnt] = False
+        Location['Roll'].data[r,:cnt] = off_nadir_roll_angle_str_20_ku[idx:idx+cnt]
+        Location['Roll'].mask[r,:cnt] = False
+        Location['Pitch'].data[r,:cnt] = off_nadir_pitch_angle_str_20_ku[idx:idx+cnt]
+        Location['Pitch'].mask[r,:cnt] = False
+        Location['Yaw'].data[r,:cnt] = off_nadir_yaw_angle_str_20_ku[idx:idx+cnt]
+        Location['Yaw'].mask[r,:cnt] = False
+        Location['MCD'].data[r,:cnt] = flag_mcd_20_ku[idx:idx+cnt]
+        Location['MCD'].mask[r,:cnt] = False
+
+        #-- CryoSat-2 Measurement Group
+        #-- Derived from instrument measurement parameters
+        Data_20Hz['TD'].data[r,:cnt] = window_del_20_ku[idx:idx+cnt]
+        Data_20Hz['TD'].mask[r,:cnt] = False
+        Data_20Hz['H_0'].data[r,:cnt] = h0_applied_20_ku[idx:idx+cnt]
+        Data_20Hz['H_0'].mask[r,:cnt] = False
+        Data_20Hz['COR2'].data[r,:cnt] = cor2_applied_20_ku[idx:idx+cnt]
+        Data_20Hz['COR2'].mask[r,:cnt] = False
+        Data_20Hz['LAI'].data[r,:cnt] = h0_lai_word_20_ku[idx:idx+cnt]
+        Data_20Hz['LAI'].mask[r,:cnt] = False
+        Data_20Hz['FAI'].data[r,:cnt] = h0_fai_word_20_ku[idx:idx+cnt]
+        Data_20Hz['FAI'].mask[r,:cnt] = False
+        Data_20Hz['AGC_CH1'].data[r,:cnt] = agc_ch1_20_ku[idx:idx+cnt]
+        Data_20Hz['AGC_CH1'].mask[r,:cnt] = False
+        Data_20Hz['AGC_CH2'].data[r,:cnt] = agc_ch2_20_ku[idx:idx+cnt]
+        Data_20Hz['AGC_CH2'].mask[r,:cnt] = False
+        Data_20Hz['TR_gain_CH1'].data[r,:cnt] = tot_gain_ch1_20_ku[idx:idx+cnt]
+        Data_20Hz['TR_gain_CH1'].mask[r,:cnt] = False
+        Data_20Hz['TR_gain_CH2'].data[r,:cnt] = tot_gain_ch2_20_ku[idx:idx+cnt]
+        Data_20Hz['TR_gain_CH2'].mask[r,:cnt] = False
+        Data_20Hz['TX_Power'].data[r,:cnt] = transmit_pwr_20_ku[idx:idx+cnt]
+        Data_20Hz['TX_Power'].mask[r,:cnt] = False
+        Data_20Hz['Doppler_range'].data[r,:cnt] = dop_cor_20_ku[idx:idx+cnt]
+        Data_20Hz['Doppler_range'].mask[r,:cnt] = False
+        Data_20Hz['Doppler_angle_start'].data[r,:cnt] = dop_angle_start_20_ku[idx:idx+cnt]
+        Data_20Hz['Doppler_angle_start'].mask[r,:cnt] = False
+        Data_20Hz['Doppler_angle_stop'].data[r,:cnt] = dop_angle_stop_20_ku[idx:idx+cnt]
+        Data_20Hz['Doppler_angle_stop'].mask[r,:cnt] = False
+        Data_20Hz['TR_inst_range'].data[r,:cnt] = instr_cor_range_tx_rx_20_ku[idx:idx+cnt]
+        Data_20Hz['TR_inst_range'].mask[r,:cnt] = False
+        Data_20Hz['R_inst_range'].data[r,:cnt] = instr_cor_range_rx_20_ku[idx:idx+cnt]
+        Data_20Hz['R_inst_range'].mask[r,:cnt] = False
+        Data_20Hz['TR_inst_gain'].data[r,:cnt] = instr_cor_gain_tx_rx_20_ku[idx:idx+cnt]
+        Data_20Hz['TR_inst_gain'].mask[r,:cnt] = False
+        Data_20Hz['R_inst_gain'].data[r,:cnt] = instr_cor_gain_rx_20_ku[idx:idx+cnt]
+        Data_20Hz['R_inst_gain'].mask[r,:cnt] = False
+        Data_20Hz['Internal_phase'].data[r,:cnt] = instr_int_ph_cor_20_ku[idx:idx+cnt]
+        Data_20Hz['Internal_phase'].mask[r,:cnt] = False
+        Data_20Hz['External_phase'].data[r,:cnt] = instr_ext_ph_cor_20_ku[idx:idx+cnt]
+        Data_20Hz['External_phase'].mask[r,:cnt] = False
+        Data_20Hz['Noise_power'].data[r,:cnt] = noise_power_20_ku[idx:idx+cnt]
+        Data_20Hz['Noise_power'].mask[r,:cnt] = False
+        Data_20Hz['Phase_slope'].data[r,:cnt] = ph_slope_cor_20_ku[idx:idx+cnt]
+        Data_20Hz['Phase_slope'].mask[r,:cnt] = False
+
+        #-- CryoSat-2 Waveforms Groups
+        Waveform_20Hz['Linear_Wfm_Multiplier'].data[r,:cnt] = echo_scale_factor_20_ku[idx:idx+cnt]
+        Waveform_20Hz['Linear_Wfm_Multiplier'].mask[r,:cnt] = False
+        Waveform_20Hz['Power2_Wfm_Multiplier'].data[r,:cnt] = echo_scale_pwr_20_ku[idx:idx+cnt]
+        Waveform_20Hz['Power2_Wfm_Multiplier'].mask[r,:cnt] = False
+        Waveform_20Hz['N_avg_echoes'].data[r,:cnt] = echo_numval_20_ku[idx:idx+cnt]
+        Waveform_20Hz['N_avg_echoes'].mask[r,:cnt] = False
+        Waveform_20Hz['Flags'].data[r,:cnt] = flag_echo_20_ku[idx:idx+cnt]
+        Waveform_20Hz['Flags'].mask[r,:cnt] = False
+        Waveform_20Hz['Waveform'].data[r,:cnt,:] = pwr_waveform_20_ku[idx:idx+cnt,:]
+        Waveform_20Hz['Waveform'].mask[r,:cnt,:] = False
+        #-- SARIN Mode parameters
+        if (MODE == 'SIN'):
+            Waveform_20Hz['Coherence'].data[r,:cnt,:] = coherence_waveform_20_ku[idx:idx+cnt,:]
+            Waveform_20Hz['Coherence'].mask[r,:cnt,:] = False
+            Waveform_20Hz['Phase_diff'].data[r,:cnt,:] = ph_diff_waveform_20_ku[idx:idx+cnt,:]
+            Waveform_20Hz['Phase_diff'].mask[r,:cnt,:] = False
+        #-- SAR/SARIN waveform beam parameters
+        if MODE in ('SAR','SIN'):
+            Waveform_20Hz['Beam']['SD'].data[r,:cnt] = stack_std_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['SD'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['Center'].data[r,:cnt] = stack_centre_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['Center'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['Amplitude'].data[r,:cnt] = stack_scaled_amplitude_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['Amplitude'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['Skewness'].data[r,:cnt] = stack_skewness_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['Skewness'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['Kurtosis'].data[r,:cnt] = stack_kurtosis_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['Kurtosis'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['Peakiness'].data[r,:cnt] = stack_peakiness_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['Peakiness'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['RMS'].data[r,:cnt] = stack_gaussian_fitting_residuals_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['RMS'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['SD_boresight_angle'].data[r,:cnt] = stack_std_angle_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['SD_boresight_angle'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['Center_boresight_angle'].data[r,:cnt] = stack_centre_angle_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['Center_boresight_angle'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['Center_look_angle'].data[r,:cnt] = stack_centre_look_angle_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['Center_look_angle'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['Number'].data[r,:cnt] = stack_number_before_weighting_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['Number'].mask[r,:cnt] = False
+            Waveform_20Hz['Beam']['Weighted_Number'].data[r,:cnt] = stack_number_after_weighting_20_ku[idx:idx+cnt]
+            Waveform_20Hz['Beam']['Weighted_Number'].mask[r,:cnt] = False
+
+    #-- Bind all the variables of the l1b_mds together into a single dictionary
+    CS_l1b_mds = {}
+    CS_l1b_mds['Location'] = Location
+    CS_l1b_mds['Data'] = Data_20Hz
+    CS_l1b_mds['Geometry'] = Geometry
+    CS_l1b_mds['Waveform_1Hz'] = Waveform_1Hz
+    CS_l1b_mds['Waveform_20Hz'] = Waveform_20Hz
+
+    #-- extract global attributes and assign as MPH and SPH metadata
+    CS_l1b_mds['METADATA'] = dict(MPH={},SPH={},DSD={})
+    #-- MPH attributes
+    CS_l1b_mds['METADATA']['MPH']['PRODUCT'] = fid.product_name
+    CS_l1b_mds['METADATA']['MPH']['DOI'] = fid.doi
+    CS_l1b_mds['METADATA']['MPH']['PROC_STAGE'] =  fid.processing_stage
+    CS_l1b_mds['METADATA']['MPH']['REF_DOC'] =  fid.reference_document
+    CS_l1b_mds['METADATA']['MPH']['ACQUISITION_STATION'] = fid.acquisition_station
+    CS_l1b_mds['METADATA']['MPH']['PROC_CENTER'] = fid.processing_centre
+    CS_l1b_mds['METADATA']['MPH']['PROC_TIME'] = fid.creation_time
+    CS_l1b_mds['METADATA']['MPH']['SOFTWARE_VER'] = fid.software_version
+    CS_l1b_mds['METADATA']['MPH']['SENSING_START'] = fid.sensing_start
+    CS_l1b_mds['METADATA']['MPH']['SENSING_STOP'] = fid.sensing_stop
+    CS_l1b_mds['METADATA']['MPH']['PHASE'] = fid.phase
+    CS_l1b_mds['METADATA']['MPH']['CYCLE'] = fid.cycle_number
+    CS_l1b_mds['METADATA']['MPH']['REL_ORBIT'] = fid.rel_orbit_number
+    CS_l1b_mds['METADATA']['MPH']['ABS_ORBIT'] = fid.abs_orbit_number
+    CS_l1b_mds['METADATA']['MPH']['STATE_VECTOR_TIME'] = fid.state_vector_time
+    CS_l1b_mds['METADATA']['MPH']['DELTA_UT1'] = fid.delta_ut1
+    CS_l1b_mds['METADATA']['MPH']['X_POSITION'] = fid.x_position
+    CS_l1b_mds['METADATA']['MPH']['Y_POSITION'] = fid.y_position
+    CS_l1b_mds['METADATA']['MPH']['Z_POSITION'] = fid.z_position
+    CS_l1b_mds['METADATA']['MPH']['X_VELOCITY'] = fid.x_velocity
+    CS_l1b_mds['METADATA']['MPH']['Y_VELOCITY'] = fid.y_velocity
+    CS_l1b_mds['METADATA']['MPH']['Z_VELOCITY'] = fid.z_velocity
+    CS_l1b_mds['METADATA']['MPH']['VECTOR_SOURCE'] = fid.vector_source
+    CS_l1b_mds['METADATA']['MPH']['LEAP_UTC'] = fid.leap_utc
+    CS_l1b_mds['METADATA']['MPH']['LEAP_SIGN'] = fid.leap_sign
+    CS_l1b_mds['METADATA']['MPH']['LEAP_ERR'] = fid.leap_err
+    CS_l1b_mds['METADATA']['MPH']['PRODUCT_ERR'] = fid.product_err
+    #-- SPH attributes
+    CS_l1b_mds['METADATA']['SPH']['START_RECORD_TAI_TIME'] = fid.first_record_time
+    CS_l1b_mds['METADATA']['SPH']['STOP_RECORD_TAI_TIME'] = fid.last_record_time
+    CS_l1b_mds['METADATA']['SPH']['ABS_ORBIT_START'] = fid.abs_orbit_start
+    CS_l1b_mds['METADATA']['SPH']['REL_TIME_ASC_NODE_START'] = fid.rel_time_acs_node_start
+    CS_l1b_mds['METADATA']['SPH']['ABS_ORBIT_STOP'] = fid.abs_orbit_stop
+    CS_l1b_mds['METADATA']['SPH']['REL_TIME_ASC_NODE_STOP'] = fid.rel_time_acs_node_stop
+    CS_l1b_mds['METADATA']['SPH']['EQUATOR_CROSS_TIME_UTC'] = fid.equator_cross_time
+    CS_l1b_mds['METADATA']['SPH']['EQUATOR_CROSS_LONG'] = fid.equator_cross_long
+    CS_l1b_mds['METADATA']['SPH']['ASCENDING_FLAG'] = fid.ascending_flag
+    CS_l1b_mds['METADATA']['SPH']['START_LAT'] = fid.first_record_lat
+    CS_l1b_mds['METADATA']['SPH']['START_LONG'] = fid.first_record_lon
+    CS_l1b_mds['METADATA']['SPH']['STOP_LAT'] = fid.last_record_lat
+    CS_l1b_mds['METADATA']['SPH']['STOP_LONG'] = fid.last_record_lon
+    CS_l1b_mds['METADATA']['SPH']['L0_PROC_FLAG'] = fid.l0_proc_flag
+    CS_l1b_mds['METADATA']['SPH']['L0_PROCESSING_QUALITY'] = fid.l0_processing_quality
+    CS_l1b_mds['METADATA']['SPH']['L0_PROC_THRESH'] = fid.l0_proc_thresh
+    CS_l1b_mds['METADATA']['SPH']['L0_GAPS_FLAG'] = fid.l0_gaps_flag
+    CS_l1b_mds['METADATA']['SPH']['L0_GAPS_NUM'] = fid.l0_gaps_num
+    CS_l1b_mds['METADATA']['SPH']['INSTR_ID'] = fid.instr_id
+    CS_l1b_mds['METADATA']['SPH']['OPEN_OCEAN_PERCENT'] = fid.open_ocean_percent
+    CS_l1b_mds['METADATA']['SPH']['CLOSE_SEA_PERCENT'] = fid.close_sea_percent
+    CS_l1b_mds['METADATA']['SPH']['CONTINENT_ICE_PERCENT'] = fid.continent_ice_percent
+    CS_l1b_mds['METADATA']['SPH']['LAND_PERCENT'] = fid.land_percent
+    CS_l1b_mds['METADATA']['SPH']['L1_PROD_STATUS'] = fid.l1b_prod_status
+    CS_l1b_mds['METADATA']['SPH']['L1_PROC_FLAG'] = fid.l1b_proc_flag
+    CS_l1b_mds['METADATA']['SPH']['L1_PROCESSING_QUALITY'] = fid.l1b_processing_quality
+    CS_l1b_mds['METADATA']['SPH']['L1_PROC_THRESH'] = fid.l1b_proc_thresh
+    CS_l1b_mds['METADATA']['SPH']['SIR_CONFIGURATION'] = fid.sir_configuration
+    CS_l1b_mds['METADATA']['SPH']['SIR_OP_MODE'] = fid.sir_op_mode
+    CS_l1b_mds['METADATA']['SPH']['ORBIT_FILE'] = fid.xref_orbit
+    CS_l1b_mds['METADATA']['SPH']['PROC_CONFIG_PARAMS_FILE'] = fid.xref_pconf
+    CS_l1b_mds['METADATA']['SPH']['CONSTANTS_FILE'] = fid.xref_constants
+    CS_l1b_mds['METADATA']['SPH']['IPF_RA_DATABASE_FILE'] = fid.xref_siral_characterisation
+    CS_l1b_mds['METADATA']['SPH']['DORIS_USO_DRIFT_FILE'] = fid.xref_uso
+    CS_l1b_mds['METADATA']['SPH']['STAR_TRACKER_ATTREF_FILE'] = fid.xref_star_tracker_attref
+    CS_l1b_mds['METADATA']['SPH']['SIRAL_LEVEL_0_FILE'] = fid.xref_siral_l0
+    CS_l1b_mds['METADATA']['SPH']['CALIBRATION_TYPE_1_FILE'] = fid.xref_cal1
+    CS_l1b_mds['METADATA']['SPH']['SIR_COMPLEX_CAL1_SARIN'] = fid.xref_cal1_sarin
+    CS_l1b_mds['METADATA']['SPH']['CALIBRATION_TYPE_2_FILE'] = fid.xref_cal2
+    CS_l1b_mds['METADATA']['SPH']['SURFACE_PRESSURE_FILE'] = fid.xref_surf_pressure
+    CS_l1b_mds['METADATA']['SPH']['MEAN_PRESSURE_FILE'] = fid.xref_mean_pressure
+    CS_l1b_mds['METADATA']['SPH']['WET_TROPOSPHERE_FILE'] = fid.xref_wet_trop
+    CS_l1b_mds['METADATA']['SPH']['U_WIND_FILE'] = fid.xref_u_wind
+    CS_l1b_mds['METADATA']['SPH']['V_WIND_FILE'] = fid.xref_v_wind
+    CS_l1b_mds['METADATA']['SPH']['METEO_GRID_DEF_FILE'] = fid.xref_meteo
+    CS_l1b_mds['METADATA']['SPH']['S1S2_PRESSURE_00H_MAP'] = fid.xref_s1s2_pressure_00h
+    CS_l1b_mds['METADATA']['SPH']['S1S2_PRESSURE_06H_MAP'] = fid.xref_s1s2_pressure_06h
+    CS_l1b_mds['METADATA']['SPH']['S1S2_PRESSURE_12H_MAP'] = fid.xref_s1s2_pressure_12h
+    CS_l1b_mds['METADATA']['SPH']['S1S2_PRESSURE_18H_MAP'] = fid.xref_s1s2_pressure_18h
+    CS_l1b_mds['METADATA']['SPH']['S1_TIDE_AMPLITUDE_MAP'] = fid.xref_s1_tide_amplitude
+    CS_l1b_mds['METADATA']['SPH']['S1_TIDE_PHASE_MAP'] = fid.xref_s1_tide_phase
+    CS_l1b_mds['METADATA']['SPH']['S2_TIDE_AMPLITUDE_MAP'] = fid.xref_s2_tide_amplitude
+    CS_l1b_mds['METADATA']['SPH']['S2_TIDE_PHASE_MAP'] = fid.xref_s2_tide_phase
+    CS_l1b_mds['METADATA']['SPH']['GPS_IONO_MAP'] = fid.xref_gim
+    CS_l1b_mds['METADATA']['SPH']['IONO_COEFFICENTS_FILE'] = fid.xref_iono_cor
+    CS_l1b_mds['METADATA']['SPH']['SAI_FILE'] = fid.xref_sai
+    CS_l1b_mds['METADATA']['SPH']['OCEAN_TIDE_FILE'] = fid.xref_ocean_tide
+    CS_l1b_mds['METADATA']['SPH']['TIDAL_LOADING_FILE'] = fid.xref_tidal_load
+    CS_l1b_mds['METADATA']['SPH']['EARTH_TIDE_FILE'] = fid.xref_earth_tide
+    CS_l1b_mds['METADATA']['SPH']['POLE_TIDE_FILE'] = fid.xref_pole_location
+    CS_l1b_mds['METADATA']['SPH']['SURFACE_TYPE_FILE'] = fid.xref_surf_type
+
+    #-- return the output dictionary
+    return CS_l1b_mds
+
+#-- PURPOSE: Initiate L1b MDS variables for CryoSat Baseline E (netCDF4)
+def cryosat_baseline_E(full_filename, MODE, UNPACK=False):
+    #-- open netCDF4 file for reading
+    fid = netCDF4.Dataset(os.path.expanduser(full_filename),'r')
+    #-- use original unscaled units unless UNPACK=True
+    fid.set_auto_scale(UNPACK)
+    #-- get dimensions
+    ind_first_meas_20hz_01 = fid.variables['ind_first_meas_20hz_01'][:].copy()
+    ind_meas_1hz_20_ku = fid.variables['ind_meas_1hz_20_ku'][:].copy()
+    n_records = len(ind_first_meas_20hz_01)
+    n_SARIN_D_RW = 1024
+    n_SARIN_RW = 512
+    n_SAR_D_RW = 256
+    n_SAR_RW = 128
+    n_LRM_RW = 128
+    n_blocks = 20
+
+    #-- CryoSat-2 Time and Orbit Group
+    Location = {}
+    #-- MDS Time
+    Location['Time'] = np.ma.zeros((n_records,n_blocks))
+    Location['Time'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    time_20_ku = fid.variables['time_20_ku'][:].copy()
+    #-- Time: day part
+    Location['Day'] = np.ma.zeros((n_records,n_blocks))
+    Location['Day'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    #-- Time: second part
+    Location['Second'] = np.ma.zeros((n_records,n_blocks))
+    Location['Second'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    #-- Time: microsecond part
+    Location['Micsec'] = np.ma.zeros((n_records,n_blocks))
+    Location['Micsec'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    #-- USO correction factor
+    Location['USO_Corr'] = np.ma.zeros((n_records,n_blocks))
+    Location['USO_Corr'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    uso_cor_20_ku = fid.variables['uso_cor_20_ku'][:].copy()
+    #-- Mode ID
+    Location['Mode_ID'] = np.ma.zeros((n_records,n_blocks))
+    Location['Mode_ID'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_instr_mode_op_20_ku =fid.variables['flag_instr_mode_op_20_ku'][:].copy()
+    #-- Mode Flags
+    Location['Mode_flags'] = np.ma.zeros((n_records,n_blocks))
+    Location['Mode_flags'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_instr_mode_flags_20_ku =fid.variables['flag_instr_mode_flags_20_ku'][:].copy()
+    #-- Platform attitude control mode
+    Location['Att_control'] = np.ma.zeros((n_records,n_blocks))
+    Location['Att_control'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_instr_mode_att_ctrl_20_ku =fid.variables['flag_instr_mode_att_ctrl_20_ku'][:].copy()
+    #-- Instrument configuration
+    Location['Inst_config'] = np.ma.zeros((n_records,n_blocks))
+    Location['Inst_config'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_instr_conf_rx_flags_20_ku = fid.variables['flag_instr_conf_rx_flags_20_ku'][:].copy()
+    #-- acquisition band
+    Location['Inst_band'] = np.ma.zeros((n_records,n_blocks))
+    Location['Inst_band'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_instr_conf_rx_bwdt_20_ku = fid.variables['flag_instr_conf_rx_bwdt_20_ku'][:].copy()
+    #-- instrument channel
+    Location['Inst_channel'] = np.ma.zeros((n_records,n_blocks))
+    Location['Inst_channel'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_instr_conf_rx_in_use_20_ku = fid.variables['flag_instr_conf_rx_in_use_20_ku'][:].copy()
+    #-- tracking mode
+    Location['Tracking_mode'] = np.ma.zeros((n_records,n_blocks))
+    Location['Tracking_mode'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_instr_conf_rx_trk_mode_20_ku = fid.variables['flag_instr_conf_rx_trk_mode_20_ku'][:].copy()
+    #-- Source sequence counter
+    Location['SSC'] = np.ma.zeros((n_records,n_blocks))
+    Location['SSC'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    seq_count_20_ku = fid.variables['seq_count_20_ku'][:].copy()
+    #-- Record Counter
+    Location['Rec_Count'] = np.ma.zeros((n_records,n_blocks))
+    Location['Rec_Count'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    rec_count_20_ku = fid.variables['rec_count_20_ku'][:].copy()
+    #-- Lat: packed units (0.1 micro-degree, 1e-7 degrees)
+    Location['Lat'] = np.ma.zeros((n_records,n_blocks))
+    Location['Lat'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    lat_20_ku = fid.variables['lat_20_ku'][:].copy()
+    #-- Lon: packed units (0.1 micro-degree, 1e-7 degrees)
+    Location['Lon'] = np.ma.zeros((n_records,n_blocks))
+    Location['Lon'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    lon_20_ku = fid.variables['lon_20_ku'][:].copy()
+    #-- Alt: packed units (mm, 1e-3 m)
+    #-- Altitude of COG above reference ellipsoid (interpolated value)
+    Location['Alt'] = np.ma.zeros((n_records,n_blocks))
+    Location['Alt'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    alt_20_ku = fid.variables['alt_20_ku'][:].copy()
+    #-- Instantaneous altitude rate derived from orbit: packed units (mm/s, 1e-3 m/s)
+    Location['Alt_rate'] = np.ma.zeros((n_records,n_blocks))
+    Location['Alt_rate'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    orb_alt_rate_20_ku = fid.variables['orb_alt_rate_20_ku'][:].copy()
+    #-- Satellite velocity vector. In ITRF: packed units (mm/s, 1e-3 m/s)
+    #-- ITRF= International Terrestrial Reference Frame
+    Location['Sat_velocity'] = np.ma.zeros((n_records,n_blocks,3))
+    Location['Sat_velocity'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    sat_vel_vec_20_ku = fid.variables['sat_vel_vec_20_ku'][:].copy()
+    #-- Real beam direction vector. In CRF: packed units (micro-m/s, 1e-6 m/s)
+    #-- CRF= CryoSat Reference Frame.
+    Location['Real_beam'] = np.ma.zeros((n_records,n_blocks,3))
+    Location['Real_beam'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    beam_dir_vec_20_ku = fid.variables['beam_dir_vec_20_ku'][:].copy()
+    #-- Interferometric baseline vector. In CRF: packed units (micro-m/s, 1e-6 m/s)
+    Location['Baseline'] = np.ma.zeros((n_records,n_blocks,3))
+    Location['Baseline'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    inter_base_vec_20_ku = fid.variables['inter_base_vec_20_ku'][:].copy()
+    #-- Star Tracker ID
+    Location['ST_ID'] = np.ma.zeros((n_records,n_blocks))
+    Location['ST_ID'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_instr_conf_rx_str_in_use_20_ku = fid.variables['flag_instr_conf_rx_str_in_use_20_ku'][:].copy()
+    #-- Antenna Bench Roll Angle (Derived from star trackers)
+    #-- packed units (0.1 micro-degree, 1e-7 degrees)
+    Location['Roll'] = np.ma.zeros((n_records,n_blocks))
+    Location['Roll'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    off_nadir_roll_angle_str_20_ku = fid.variables['off_nadir_roll_angle_str_20_ku'][:].copy()
+    #-- Antenna Bench Pitch Angle (Derived from star trackers)
+    #-- packed units (0.1 micro-degree, 1e-7 degrees)
+    Location['Pitch'] = np.ma.zeros((n_records,n_blocks))
+    Location['Pitch'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    off_nadir_pitch_angle_str_20_ku = fid.variables['off_nadir_pitch_angle_str_20_ku'][:].copy()
+    #-- Antenna Bench Yaw Angle (Derived from star trackers)
+    #-- packed units (0.1 micro-degree, 1e-7 degrees)
+    Location['Yaw'] = np.ma.zeros((n_records,n_blocks))
+    Location['Yaw'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    off_nadir_yaw_angle_str_20_ku = fid.variables['off_nadir_yaw_angle_str_20_ku'][:].copy()
+    #-- Measurement Confidence Data Flags
+    #-- Generally the MCD flags indicate problems when set
+    #-- If MCD is 0 then no problems or non-nominal conditions were detected
+    #-- Serious errors are indicated by setting bit 31
+    Location['MCD'] = np.ma.zeros((n_records,n_blocks))
+    Location['MCD'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    flag_mcd_20_ku = fid.variables['flag_mcd_20_ku'][:].copy()
+
+    #-- CryoSat-2 Measurement Group
+    #-- Derived from instrument measurement parameters
+    Data_20Hz = {}
+    #-- Window Delay reference (two-way) corrected for instrument delays
+    Data_20Hz['TD'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['TD'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    window_del_20_ku = fid.variables['window_del_20_ku'][:].copy()
+    #-- H0 Initial Height Word from telemetry
+    Data_20Hz['H_0'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['H_0'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    h0_applied_20_ku = fid.variables['h0_applied_20_ku'][:].copy()
+    #-- COR2 Height Rate: on-board tracker height rate over the radar cycle
+    Data_20Hz['COR2'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['COR2'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    cor2_applied_20_ku = fid.variables['cor2_applied_20_ku'][:].copy()
+    #-- Coarse Range Word (LAI) derived from telemetry
+    Data_20Hz['LAI'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['LAI'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    h0_lai_word_20_ku = fid.variables['h0_lai_word_20_ku'][:].copy()
+    #-- Fine Range Word (FAI) derived from telemetry
+    Data_20Hz['FAI'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['FAI'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    h0_fai_word_20_ku = fid.variables['h0_fai_word_20_ku'][:].copy()
+    #-- Automatic Gain Control Channel 1: AGC gain applied on Rx channel 1.
+    #-- Gain calibration corrections are applied (Sum of AGC stages 1 and 2
+    #-- plus the corresponding corrections) (dB/100)
+    Data_20Hz['AGC_CH1'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['AGC_CH1'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    agc_ch1_20_ku = fid.variables['agc_ch1_20_ku'][:].copy()
+    #-- Automatic Gain Control Channel 2: AGC gain applied on Rx channel 2.
+    #-- Gain calibration corrections are applied (dB/100)
+    Data_20Hz['AGC_CH2'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['AGC_CH2'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    agc_ch2_20_ku = fid.variables['agc_ch2_20_ku'][:].copy()
+    #-- Total Fixed Gain On Channel 1: gain applied by the RF unit. (dB/100)
+    Data_20Hz['TR_gain_CH1'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['TR_gain_CH1'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    tot_gain_ch1_20_ku = fid.variables['tot_gain_ch1_20_ku'][:].copy()
+    #-- Total Fixed Gain On Channel 2: gain applied by the RF unit. (dB/100)
+    Data_20Hz['TR_gain_CH2'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['TR_gain_CH2'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    tot_gain_ch2_20_ku = fid.variables['tot_gain_ch2_20_ku'][:].copy()
+    #-- Transmit Power in microWatts
+    Data_20Hz['TX_Power'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['TX_Power'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    transmit_pwr_20_ku = fid.variables['transmit_pwr_20_ku'][:].copy()
+    #-- Doppler range correction: Radial component (mm)
+    #-- computed for the component of satellite velocity in the nadir direction
+    Data_20Hz['Doppler_range'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['Doppler_range'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    dop_cor_20_ku = fid.variables['dop_cor_20_ku'][:].copy()
+    #-- Value of Doppler Angle for the first single look echo (1e-7 radians)
+    Data_20Hz['Doppler_angle_start'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['Doppler_angle_start'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    dop_angle_start_20_ku = fid.variables['dop_angle_start_20_ku'][:].copy()
+    #-- Value of Doppler Angle for the last single look echo (1e-7 radians)
+    Data_20Hz['Doppler_angle_stop'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['Doppler_angle_stop'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    dop_angle_stop_20_ku = fid.variables['dop_angle_stop_20_ku'][:].copy()
+    #-- Instrument Range Correction: transmit-receive antenna (mm)
+    #-- Calibration correction to range on channel 1 computed from CAL1.
+    Data_20Hz['TR_inst_range'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['TR_inst_range'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    instr_cor_range_tx_rx_20_ku = fid.variables['instr_cor_range_tx_rx_20_ku'][:].copy()
+    #-- Instrument Range Correction: receive-only antenna (mm)
+    #-- Calibration correction to range on channel 2 computed from CAL1.
+    Data_20Hz['R_inst_range'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['R_inst_range'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    instr_cor_range_rx_20_ku = fid.variables['instr_cor_range_rx_20_ku'][:].copy()
+    #-- Instrument Gain Correction: transmit-receive antenna (dB/100)
+    #-- Calibration correction to gain on channel 1 computed from CAL1
+    Data_20Hz['TR_inst_gain'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['TR_inst_gain'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    instr_cor_gain_tx_rx_20_ku = fid.variables['instr_cor_gain_tx_rx_20_ku'][:].copy()
+    #-- Instrument Gain Correction: receive-only (dB/100)
+    #-- Calibration correction to gain on channel 2 computed from CAL1
+    Data_20Hz['R_inst_gain'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['R_inst_gain'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    instr_cor_gain_rx_20_ku = fid.variables['instr_cor_gain_rx_20_ku'][:].copy()
+    #-- Internal Phase Correction (microradians)
+    Data_20Hz['Internal_phase'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['Internal_phase'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    instr_int_ph_cor_20_ku = fid.variables['instr_int_ph_cor_20_ku'][:].copy()
+    #-- External Phase Correction (microradians)
+    Data_20Hz['External_phase'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['External_phase'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    instr_ext_ph_cor_20_ku = fid.variables['instr_ext_ph_cor_20_ku'][:].copy()
+    #-- Noise Power measurement (dB/100)
+    Data_20Hz['Noise_power'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['Noise_power'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    noise_power_20_ku = fid.variables['noise_power_20_ku'][:].copy()
+    #-- Phase slope correction (microradians)
+    #-- Computed from the CAL-4 packets during the azimuth impulse response
+    #-- amplitude (SARIN only). Set from the latest available CAL-4 packet.
+    Data_20Hz['Phase_slope'] = np.ma.zeros((n_records,n_blocks))
+    Data_20Hz['Phase_slope'].mask = np.zeros((n_records,n_blocks),dtype=bool)
+    ph_slope_cor_20_ku = fid.variables['ph_slope_cor_20_ku'][:].copy()
+
+    #-- CryoSat-2 External Corrections Group
+    Geometry = {}
+    #-- Data Record Time (MDSR Time Stamp)
+    Geometry['Time'] = fid.variables['time_cor_01'][:].copy()
+    #-- Dry Tropospheric Correction packed units (mm, 1e-3 m)
+    Geometry['dryTrop'] = fid.variables['mod_dry_tropo_cor_01'][:].copy()
+    #-- Wet Tropospheric Correction packed units (mm, 1e-3 m)
+    Geometry['wetTrop'] = fid.variables['mod_wet_tropo_cor_01'][:].copy()
+    #-- Inverse Barometric Correction packed units (mm, 1e-3 m)
+    Geometry['InvBar'] = fid.variables['inv_bar_cor_01'][:].copy()
+    #-- Delta Inverse Barometric Correction packed units (mm, 1e-3 m)
+    Geometry['DAC'] = fid.variables['hf_fluct_total_cor_01'][:].copy()
+    #-- GIM Ionospheric Correction packed units (mm, 1e-3 m)
+    Geometry['Iono_GIM'] = fid.variables['iono_cor_gim_01'][:].copy()
+    #-- Model Ionospheric Correction packed units (mm, 1e-3 m)
+    Geometry['Iono_model'] = fid.variables['iono_cor_01'][:].copy()
+    #-- Ocean tide Correction packed units (mm, 1e-3 m)
+    Geometry['ocTideElv'] = fid.variables['ocean_tide_01'][:].copy()
+    #-- Long period equilibrium ocean tide Correction packed units (mm, 1e-3 m)
+    Geometry['lpeTideElv'] = fid.variables['ocean_tide_eq_01'][:].copy()
+    #-- Ocean loading tide Correction packed units (mm, 1e-3 m)
+    Geometry['olTideElv'] = fid.variables['load_tide_01'][:].copy()
+    #-- Solid Earth tide Correction packed units (mm, 1e-3 m)
+    Geometry['seTideElv'] = fid.variables['solid_earth_tide_01'][:].copy()
+    #-- Geocentric Polar tide Correction packed units (mm, 1e-3 m)
+    Geometry['gpTideElv'] = fid.variables['pole_tide_01'][:].copy()
+    #-- Surface Type: enumerated key to classify surface at nadir
+    #-- 0 = Open Ocean
+    #-- 1 = Closed Sea
+    #-- 2 = Continental Ice
+    #-- 3 = Land
+    Geometry['Surf_type'] = fid.variables['surf_type_01'][:].copy()
+    #-- Corrections Status Flag
+    Geometry['Corr_status'] = fid.variables['flag_cor_status_01'][:].copy()
+    #-- Correction Error Flag
+    Geometry['Corr_error'] = fid.variables['flag_cor_err_01'][:].copy()
+
+    #-- Same as the LRM/SAR groups but the waveform array is 512 bins instead of
+    #-- 128 and the number of echoes averaged is different.
+    Waveform_1Hz = {}
+    #-- Data Record Time (MDSR Time Stamp)
+    #-- Time (seconds since 2000-01-01)
     #-- Modif Meloche replace 'avg' by 'plrm'
     ### Begin MODIF MELOCHE
     time_avg_01_ku = fid.variables['time_plrm_01_ku'][:].copy()
@@ -2012,7 +2668,10 @@ def read_cryosat_L1b(full_filename, VERBOSE=False):
         print(fileBasename) if VERBOSE else None
         #-- get dataset MODE from PRODUCT portion of file name
         MODE = re.findall('(LRM|FDM|SAR|SIN)', PRODUCT).pop()
-        CS_L1b_mds = cryosat_baseline_D(full_filename, MODE, UNPACK=False)
+        if BASELINE == 'D':
+            CS_L1b_mds = cryosat_baseline_D(full_filename, MODE, UNPACK=False)
+        if BASELINE == 'E':
+            CS_L1b_mds = cryosat_baseline_E(full_filename, MODE, UNPACK=False)
     elif (fileExtension == '.DBL'):
         #-- CryoSat-2 Mode record sizes
         i_size_timestamp = 12
