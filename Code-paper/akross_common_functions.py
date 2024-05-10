@@ -6,13 +6,14 @@ Includes functions used in multiple notebooks
 
 import os
 import numpy as np
+import pandas as pd
 from math import cos, asin, sqrt
 
 # Need forked snowmicropyn from https://github.com/mjsandells/snowmicropyn
 from snowmicropyn import density_ssa, profile
 
 from smrt import make_ice_column, make_interface, make_snowpack
-from smrt.core.globalconstants import PSU
+from smrt.core.globalconstants import PSU, DENSITY_OF_ICE
 from smrt.interface.geometrical_optics_backscatter import GeometricalOpticsBackscatter
 from smrt.interface.iem_fung92_brogioni10 import IEM_Fung92_Briogoni10
 
@@ -39,6 +40,7 @@ FYI_ice = make_ice_column(ice_type='multiyear',
                     density=880,
                     salinity=5*PSU,
                     add_water_substrate=True)
+
 
 
 def find_site_smp_files(site, data_dir=None):
@@ -80,14 +82,17 @@ def get_coords(list_of_sites, data_dir):
 
 
 def debye_calc(ssa, density):
-    return 4 * (1 - density / 917) / (ssa * 917)
+    return 4 * (1 - density / DENSITY_OF_ICE) / (ssa * DENSITY_OF_ICE)
 
 def build_snowpack_pickle(smp_profile, ice_salinity = 5, ice_temp = 260, sea_ice_density = 910, 
                             ice_type = 'firstyear', sigma_surface = 0):
     #build snowpack for CB
     list_sp = []
     for profile in smp_profile:
-        ice = make_ice_column(ice_type=ice_type,
+        
+        if ice_type == 'firstyear':
+            #first year
+            ice = make_ice_column(ice_type=ice_type,
                 thickness=[2], temperature= ice_temp, 
                 microstructure_model='independent_sphere',
                 radius=1e-3,
@@ -95,18 +100,25 @@ def build_snowpack_pickle(smp_profile, ice_salinity = 5, ice_temp = 260, sea_ice
                 density=sea_ice_density,
                 salinity=ice_salinity*PSU,
                 add_water_substrate=True)
-
-        # Convert to exp. corr length
-        debye = 1.2
-        lex_array = debye * 4 * (1 - profile.density / 917) / (profile.ssa * 917)
-
+        else:
+            #Multiyear
+            ice = make_ice_column(ice_type=ice_type,
+                thickness=[3], temperature= ice_temp, 
+                microstructure_model='independent_sphere',
+                radius=1e-3,
+                brine_inclusion_shape='spheres',
+                density=sea_ice_density,
+                salinity=ice_salinity*PSU,
+                add_water_substrate=True)
+        
+        #restrict temperature so the snow salinity model works 
         profile.temperature[profile.temperature < 251] = 251
         snowpack = make_snowpack(profile.thick, microstructure_model='unified_scaled_exponential',
-                        density=profile.density , 
-                        porod_length=lex_array,
+                        density=profile.density, 
+                        porod_length = debye_calc(profile.ssa, profile.density),
                         temperature = profile.temperature,
                         salinity=profile.salinity * PSU,
-                        polydispersity = 1) + ice
+                        polydispersity = profile.polydispersity) + ice
         snowpack.sigma_surface = sigma_surface
         list_sp.append(snowpack)
     
@@ -134,7 +146,6 @@ def change_roughness_geo(list_of_snowpack, mean_ice_rms, mean_ice_lc, mean_snow_
         list_of_snowpack[i].interfaces[0] = make_interface(GeometricalOpticsBackscatter, mean_square_slope = snow_mss)
 
         
-
 
 def align_waveform_with_sim(obs_wave):
     #index that correspond to 50% max power in simulation
@@ -192,13 +203,156 @@ def closest(data, v):
 
 
 
+"""
+Sensitivity functions
+"""
+
+#constant Ice parameter
+MYI_ice = make_ice_column(ice_type='firstyear',
+                    thickness=[2], temperature=260, 
+                    microstructure_model='independent_sphere',
+                    radius=1e-3,
+                    brine_inclusion_shape='spheres',
+                    density=910,
+                    salinity=5*PSU,
+                    add_water_substrate=True)
+
+FYI_ice = make_ice_column(ice_type='multiyear',
+                    thickness=[3], temperature=260, microstructure_model='independent_sphere',
+                    radius=1e-3,
+                    brine_inclusion_shape='spheres',
+                    density=880,
+                    salinity=5*PSU,
+                    add_water_substrate=True)
 
 
+def change_snowpack(ratio, list_snowpack, mean_rms, mean_lc, param, sigma_surface = 0.14, Ka = False):
+    """
+    get info from original snowpack
+    modified the param  (thickness, ssa or salinity) using a ratio from original measurements
+    return modified snowpack
+    """
+    new_snow = [sp.deepcopy() for sp in list_snowpack]
+    
+    for sp in new_snow:
+        sp.sigma_surface = sigma_surface
 
 
+    if Ka == True:
+        change_roughness_geo(new_snow, mean_rms, mean_lc, mean_rms, mean_lc)
+    else:
+        change_roughness(new_snow, mean_rms, mean_lc, mean_rms, mean_lc)
+
+    for i in range(0, len(new_snow)): 
+        snow_layers = new_snow[i].nlayer - 1
+        if param == 'thick':
+            for n in np.arange(snow_layers):
+                new_snow[i].layers[n].thickness = new_snow[i].layers[n].thickness * ratio
+        if param == 'ssa':
+            for n in np.arange(snow_layers):
+                #apply change to ssa therefore corrL
+                corrL_change = new_snow[i].layers[n].microstructure.polydispersity * debye_calc(new_snow[i].layers[n].ssa*ratio , new_snow[i].layers[n].density)
+                new_snow[i].layers[n].microstructure.corr_length = corrL_change
+        if param == 'salinity':
+            #apply change to salinity 
+            for n in np.arange(snow_layers):
+                new_snow[i].layers[-n].salinity = new_snow[i].layers[-n].salinity * ratio
+            
+    return new_snow
 
 
+# change density in snowpack, needs a special function because denisty cannot be modify once snowpack is made
+def change_density_temp(list_snowpack, ratio, temp_shift, mean_rms, mean_lc, sigma_surface = 0.14, Ka = False):
+    """
+    redefine snowpack from scratch because density and temperautre are read only (cannot be modified)
+    ratio :  modified density with this ratio
+    temp_shift :  add or reduce temperature
+    return modified snowpack
+    """
+    new_snow = [sp.deepcopy() for sp in list_snowpack]
 
+    for sp in new_snow:
+        sp.sigma_surface = sigma_surface
+
+    if Ka == True:
+        change_roughness_geo(new_snow, mean_rms, mean_lc, mean_rms, mean_lc)
+    else:
+        change_roughness(new_snow, mean_rms, mean_lc, mean_rms, mean_lc)
+
+    for sp in new_snow: 
+        new_density = [layer.density * ratio for layer in sp.layers[:-1]]
+        for id, density in enumerate(new_density):
+            sp.layers[id].update(density = density)
+
+        new_temp = [layer.temperature + temp_shift if layer.temperature + temp_shift > 251 else 251 for layer in sp.layers[:-1]]
+        for id, temp in enumerate(new_temp):
+            sp.layers[id].update(temperature = temp)
+
+    return new_snow
+
+
+def avg_snow_sum_thick(snow_df):
+    thick = snow_df.thickness.sum()
+    snow_mean = snow_df.apply(lambda x: np.average(x, weights = snow_df.thickness.values), axis =0)
+    snow_mean['thickness'] = thick
+
+    return snow_mean
+
+def three_layer(snow_df):
+    #get norm height
+    snow_df.loc[:,'norm_h'] = snow_df.height/snow_df.thickness.sum()
+    #split by third and average
+    snow_1 = avg_snow_sum_thick(snow_df[snow_df.norm_h >= 0.66])
+    snow_2 = avg_snow_sum_thick(snow_df[(snow_df.norm_h <= 0.66) & (snow_df.norm_h >= 0.34)]) 
+    snow_3 = avg_snow_sum_thick(snow_df[snow_df.norm_h < 0.34]) 
+    
+    return pd.DataFrame([df for df in [snow_1, snow_2, snow_3] if not df.empty])
+
+def reduce_layer(list_snowpack, layer, type_ice, mean_rms, mean_lc, Ka = False):
+
+    new_snow = []
+    for sp in list_snowpack: 
+        snow_df = sp.to_dataframe().layer.iloc[:-2].drop(['microstructure_model', 'ice_type'], axis = 1)
+        snow_df['porod_length'] = sp.to_dataframe().microstructure.porod_length[:-2]
+        snow_df['polydispersity'] = sp.to_dataframe().microstructure.polydispersity[:-2]
+        snow_df['height'] = np.cumsum(snow_df.thickness.values)[::-1]
+           
+        if type_ice == 'FYI':
+            ice = FYI_ice
+            sigma_surface = 0.14
+
+        if type_ice == 'MYI':
+            ice = MYI_ice
+            sigma_surface = 0.22
+
+        if layer == 'one':
+            snow_one = avg_snow_sum_thick(snow_df)
+            snowpack = make_snowpack([snow_one.thickness], microstructure_model='unified_scaled_exponential',
+                        density=snow_one.density , 
+                        porod_length=snow_one.porod_length,
+                        temperature = snow_one.temperature,
+                        salinity=snow_one.salinity,
+                        polydispersity = snow_one.polydispersity) + ice
+            snowpack.sigma_surface = sigma_surface
+            new_snow.append(snowpack)
+
+        if layer == 'three':
+            snow_three = three_layer(snow_df)
+            snowpack = make_snowpack(snow_three.thickness, microstructure_model='unified_scaled_exponential',
+                        density=snow_three.density , 
+                        porod_length=snow_three.porod_length,
+                        temperature = snow_three.temperature,
+                        salinity=snow_three.salinity,
+                        polydispersity = snow_three.polydispersity) + ice
+            snowpack.sigma_surface = sigma_surface
+            new_snow.append(snowpack)
+
+    if Ka == True:
+        change_roughness_geo(new_snow, mean_rms, mean_lc, mean_rms, mean_lc)
+    if Ka == False:
+        change_roughness(new_snow, mean_rms, mean_lc, mean_rms, mean_lc)
+
+    return new_snow
 
 
 
