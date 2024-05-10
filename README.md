@@ -14,10 +14,9 @@ git clone https://github.com/mjsandells/snowmicropyn.git
 
 #### Data sources
 
-Alert/Eureka 16 SMP data: https://zenodo.org/record/4068349
-
-# add eureka 2022
-# add AKROSS
+Alert-17/Eureka-16 SMP data: https://zenodo.org/record/4068349
+add Eureka-22
+add CB-22
 
 CryoSat-2 observation
 ftp://science-pds.cryosat.esa.int/
