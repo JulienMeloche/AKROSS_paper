@@ -1,6 +1,6 @@
 # AKROSS paper
 
-## Altimetric Ku-band Radar Observations of Snow on Sea Ice Simulated with SMRT
+### Altimetric Ku-band Radar Observations of Snow on Sea Ice Simulated with SMRT
 
 This repo contains all code in the paper Meloche et al 2024** DOI : ...
 
